@@ -221,6 +221,14 @@ func (sm *Manager) watchEndpoint(ctx context.Context, id string, service *v1.Ser
 			// If we have a local endpoint then begin the leader Election, unless it's already running
 			//
 
+			instance, err := sm.findServiceInstanceWithTimeout(ctx, service)
+			if err != nil {
+				log.Error("error finding instance", "service", service.UID, "provider", provider.getLabel(), "err", err)
+			}
+			if instance != nil {
+				instance.HasEndpoints = len(endpoints) > 0
+			}
+
 			// Check that we have local endpoints
 			if len(endpoints) != 0 {
 				// Ignore IPv4
@@ -356,6 +364,10 @@ func (sm *Manager) watchEndpoint(ctx context.Context, id string, service *v1.Ser
 					if sm.config.EnableRoutingTable {
 						if errs := sm.clearRoutes(service); len(errs) == 0 {
 							configuredLocalRoutes.Store(string(service.UID), false)
+						} else {
+							for _, err := range errs {
+								log.Error("error while clearing routes", "err", err)
+							}
 						}
 					}
 
@@ -382,7 +394,7 @@ func (sm *Manager) watchEndpoint(ctx context.Context, id string, service *v1.Ser
 
 				// If there are no local endpoints, and we had one then remove it and stop the leaderElection
 				if lastKnownGoodEndpoint != "" {
-					log.Warn("existing  endpoint has been removed, no remaining endpoints for leaderElection", "provider", provider.getLabel(), "endpoint", lastKnownGoodEndpoint)
+					log.Warn("existing endpoint has been removed, no remaining endpoints for leaderElection", "provider", provider.getLabel(), "endpoint", lastKnownGoodEndpoint)
 					if err := sm.TeardownEgress(lastKnownGoodEndpoint, service.Spec.LoadBalancerIP, service.Namespace, service.Annotations); err != nil {
 						log.Error("error removing redundant egress rules", "err", err)
 					}
